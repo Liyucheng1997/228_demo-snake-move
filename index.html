@@ -1,0 +1,836 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>蛇的三维建模 · Snake Anatomy & Behavior</title>
+<style>
+  :root{
+    --bg:#0d1412; --panel:rgba(18,28,25,.82); --line:rgba(120,200,160,.18);
+    --txt:#dCEfe0; --muted:#8fb5a2; --accent:#67e0a3; --accent2:#e8b64a; --danger:#e0685f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--txt)}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  .panel{position:fixed;background:var(--panel);backdrop-filter:blur(10px);
+    border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  #ui{top:14px;left:14px;width:270px;max-height:calc(100vh - 28px);overflow-y:auto}
+  #ui h1{margin:0 0 2px;font-size:16px;letter-spacing:.5px}
+  #ui .sub{color:var(--muted);font-size:11px;margin-bottom:12px}
+  .group{margin:12px 0}
+  .group>label{display:block;font-size:11px;color:var(--muted);
+    text-transform:uppercase;letter-spacing:1px;margin-bottom:7px}
+  .btns{display:flex;flex-wrap:wrap;gap:6px}
+  button{font:inherit;font-size:12px;color:var(--txt);background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer;
+    transition:.15s;flex:1 1 auto;white-space:nowrap}
+  button:hover{background:rgba(103,224,163,.14);border-color:var(--accent)}
+  button.on{background:var(--accent);color:#06231a;border-color:var(--accent);font-weight:600}
+  button.act{border-color:var(--accent2);color:var(--accent2)}
+  button.act:hover{background:rgba(232,182,74,.15)}
+  .row{display:flex;align-items:center;gap:8px;font-size:12px;margin:8px 0}
+  .row input[type=range]{flex:1;accent-color:var(--accent)}
+  .val{color:var(--accent);font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+  #info{bottom:14px;left:14px;width:340px}
+  #info h2{margin:0 0 6px;font-size:14px;color:var(--accent)}
+  #info p{margin:0;font-size:12.5px;line-height:1.6;color:var(--txt)}
+  #info .tag{display:inline-block;font-size:10px;color:var(--accent2);
+    border:1px solid rgba(232,182,74,.4);border-radius:6px;padding:1px 6px;margin-bottom:7px}
+  #hud{top:14px;right:14px;text-align:right;font-size:11px;color:var(--muted);
+    padding:9px 12px;line-height:1.7}
+  #hud b{color:var(--accent);font-weight:600}
+  .hint{font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.5}
+  #loader{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);z-index:10;color:var(--muted);font-size:14px;flex-direction:column;gap:10px}
+  .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:s 1s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  a{color:var(--accent)}
+</style>
+
+<div id="loader"><div class="spin"></div><div>正在加载 Three.js 引擎…</div></div>
+<div id="app"></div>
+
+<div id="ui" class="panel">
+  <h1>🐍 蛇的三维建模</h1>
+  <div class="sub">Snake Anatomy & Behavior · Three.js</div>
+
+  <div class="group">
+    <label>运动方式 Locomotion</label>
+    <div class="btns" id="gait">
+      <button data-gait="serpentine" class="on">蜿蜒</button>
+      <button data-gait="sidewind">侧进</button>
+      <button data-gait="rectilinear">直行</button>
+      <button data-gait="idle">静止</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <label>身体结构 Structure</label>
+    <div class="btns" id="view">
+      <button data-view="skin" class="on">外观鳞片</button>
+      <button data-view="skeleton">骨骼</button>
+      <button data-view="organs">内脏</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <label>行为演示 Behavior</label>
+    <div class="btns">
+      <button id="btnTongue" class="act">👅 吐信子</button>
+      <button id="btnHunt" class="act">🎯 捕猎 / 吞咽</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <label>参数 Parameters</label>
+    <div class="row"><span>速度</span><input id="speed" type="range" min="0" max="2" step="0.05" value="1"><span class="val" id="speedV">1.0</span></div>
+    <div class="row"><span>波幅</span><input id="amp" type="range" min="0.2" max="1.6" step="0.05" value="0.7"><span class="val" id="ampV">0.7</span></div>
+    <div class="row"><span>波数</span><input id="freq" type="range" min="1" max="5" step="0.1" value="2.6"><span class="val" id="freqV">2.6</span></div>
+  </div>
+
+  <div class="hint">拖拽旋转 · 滚轮缩放 · 右键平移。切到「骨骼 / 内脏」可透视蛇的内部构造。</div>
+</div>
+
+<div id="hud" class="panel">
+  <div>模式 <b id="hudGait">蜿蜒</b></div>
+  <div>视图 <b id="hudView">外观鳞片</b></div>
+  <div>状态 <b id="hudState">游动中</b></div>
+</div>
+
+<div id="info" class="panel">
+  <span class="tag" id="infoTag">生物学</span>
+  <h2 id="infoTitle">蜿蜒运动 · Lateral Undulation</h2>
+  <p id="infoText"></p>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// ---------- 场景 ----------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1412);
+scene.fog = new THREE.Fog(0x0d1412, 34, 72);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(14, 12, 20);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0,1.0,0);
+controls.maxPolarAngle = Math.PI*0.495;
+controls.minDistance = 6; controls.maxDistance = 55;
+
+// 环境反射（让鳞片有真实光泽）
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+// 灯光
+scene.add(new THREE.HemisphereLight(0x9fd8c0, 0x1a2420, 0.75));
+const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
+sun.position.set(12,20,8); sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.near=1; sun.shadow.camera.far=60;
+sun.shadow.camera.left=-20;sun.shadow.camera.right=20;
+sun.shadow.camera.top=20;sun.shadow.camera.bottom=-20;
+sun.shadow.bias=-0.0004;
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0x4a7dff,0.4); rim.position.set(-10,6,-12); scene.add(rim);
+
+// 地面（沙地）
+const groundTex = makeGroundTexture();
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(60,64),
+  new THREE.MeshStandardMaterial({map:groundTex,roughness:1,metalness:0})
+);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------- 蛇的参数 ----------
+const N = 180;                 // 脊柱采样点数（头→尾）
+const RADIAL = 18;             // 横截面顶点数
+const SEG_LEN = 0.13;          // 相邻脊柱点弧长间距
+const BODY_LEN = N*SEG_LEN;    // 蛇身总长
+let thickness = 0.62;          // 整体粗细
+
+// 脊柱点（世界坐标）与头部轨迹历史
+const spine = Array.from({length:N},()=>new THREE.Vector3());
+const trail = [];              // 头部走过的轨迹点
+let headPos = new THREE.Vector3(0,thickness,0);
+let headAngle = 0;             // 前进朝向（绕Y）
+let phase = 0;
+
+// 初始化脊柱沿 -Z 方向直线
+for(let i=0;i<N;i++) spine[i].set(0, thickness, -i*SEG_LEN);
+for(let i=0;i<600;i++) trail.push(new THREE.Vector3(0,thickness,-i*SEG_LEN*0.5));
+
+// ---------- 半径轮廓（锥形身体） ----------
+function baseRadius(t){ // t: 0=头 1=尾
+  // 颈部略细，中段最粗，后段渐收成尖尾
+  let r;
+  if(t<0.04) r = 0.72 + t/0.04*0.18;      // 头后颈
+  else if(t<0.16) r = 0.90 + (t-0.04)/0.12*0.10; // 加粗
+  else if(t<0.62) r = 1.0;                 // 主体
+  else r = Math.pow(1-(t-0.62)/0.38, 0.85); // 收尾成尖
+  return Math.max(r,0.04);
+}
+
+// 消化食团（吞咽后沿体内移动的鼓包）
+let bolus = {active:false, t:0.1, amp:0, width:0.05};
+
+function radiusAt(t){
+  let r = baseRadius(t)*thickness;
+  if(bolus.active){
+    const d=(t-bolus.t)/bolus.width;
+    r += bolus.amp*Math.exp(-d*d)*thickness;
+  }
+  return r;
+}
+
+// ---------- 蛇身几何体（可变形 tube） ----------
+const bodyGeo = new THREE.BufferGeometry();
+const vertCount = N*(RADIAL+1);
+const posArr = new Float32Array(vertCount*3);
+const norArr = new Float32Array(vertCount*3);
+const uvArr  = new Float32Array(vertCount*2);
+const idx = [];
+for(let i=0;i<N-1;i++){
+  for(let j=0;j<RADIAL;j++){
+    const a=i*(RADIAL+1)+j, b=a+RADIAL+1, c=a+1, d=b+1;
+    idx.push(a,b,d, a,d,c);
+  }
+}
+// UV（v 沿身体，u 绕周长）
+for(let i=0;i<N;i++)for(let j=0;j<=RADIAL;j++){
+  const k=(i*(RADIAL+1)+j)*2;
+  uvArr[k]=j/RADIAL; uvArr[k+1]=i/N*20;
+}
+bodyGeo.setAttribute('position',new THREE.BufferAttribute(posArr,3));
+bodyGeo.setAttribute('normal',new THREE.BufferAttribute(norArr,3));
+bodyGeo.setAttribute('uv',new THREE.BufferAttribute(uvArr,2));
+bodyGeo.setIndex(idx);
+
+const scaleTex = makeSnakeSkin();
+const scaleBump = makeSnakeBump();
+const skinMat = new THREE.MeshPhysicalMaterial({
+  map:scaleTex, roughness:0.42, metalness:0.0,
+  bumpMap:scaleBump, bumpScale:0.35,
+  clearcoat:0.6, clearcoatRoughness:0.35,
+  sheen:0.5, sheenColor:new THREE.Color(0x9fd88a), sheenRoughness:0.6,
+  envMapIntensity:0.9
+});
+const bodyMesh = new THREE.Mesh(bodyGeo, skinMat);
+bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
+scene.add(bodyMesh);
+
+// ---------- 头部 ----------
+const head = new THREE.Group();
+scene.add(head);
+
+const headMat = new THREE.MeshPhysicalMaterial({
+  color:0x46632a, roughness:0.4, metalness:0.0,
+  bumpMap:scaleBump, bumpScale:0.25, clearcoat:0.6, clearcoatRoughness:0.35,
+  sheen:0.4, sheenColor:new THREE.Color(0x9fd88a), envMapIntensity:0.9
+});
+const headTopMat = headMat.clone(); headTopMat.color = new THREE.Color(0x35521e); // 头背更深
+// 颅部（后宽前窄的楔形）
+const cranium = new THREE.Mesh(new THREE.SphereGeometry(1,28,20), headTopMat);
+cranium.scale.set(0.6,0.44,0.82); cranium.position.z = 0.2; cranium.castShadow=true;
+head.add(cranium);
+// 吻部（向前收窄、略下压）
+const snout = new THREE.Mesh(new THREE.SphereGeometry(1,24,18), headMat);
+snout.scale.set(0.42,0.34,0.62); snout.position.set(0,-0.05,0.92); snout.castShadow=true;
+head.add(snout);
+// 两侧颊部填充，衔接更顺
+for(const s of [-1,1]){
+  const cheek=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),headMat);
+  cheek.scale.set(0.30,0.34,0.6); cheek.position.set(s*0.28,-0.05,0.45);
+  head.add(cheek);
+}
+// 眉脊（眼上突起，蛇的标志性凶相）
+for(const s of [-1,1]){
+  const brow=new THREE.Mesh(new THREE.SphereGeometry(1,12,10),headTopMat);
+  brow.scale.set(0.16,0.12,0.28); brow.position.set(s*0.34,0.22,0.42);
+  head.add(brow);
+}
+
+// 下颚（可张开）
+const jaw = new THREE.Group(); head.add(jaw);
+const mouthMat = new THREE.MeshStandardMaterial({color:0xb85c63,roughness:0.55});
+const jawMesh = new THREE.Mesh(new THREE.SphereGeometry(1,22,14,0,Math.PI*2,Math.PI*0.5,Math.PI*0.5), headMat);
+jawMesh.scale.set(0.5,0.34,0.86); jawMesh.position.set(0,-0.14,0.5);
+jaw.add(jawMesh);
+// 口腔内壁（张口时可见）
+const mouthIn = new THREE.Mesh(new THREE.SphereGeometry(0.42,16,12), mouthMat);
+mouthIn.scale.set(0.85,0.5,1.4); mouthIn.position.set(0,-0.08,0.55);
+jaw.add(mouthIn);
+
+// 眼睛（金色竖瞳）
+const eyeMat = new THREE.MeshPhysicalMaterial({color:0xe0a828,roughness:0.12,clearcoat:1,clearcoatRoughness:0.05,emissive:0x2a1c00,emissiveIntensity:0.3});
+const pupilMat = new THREE.MeshStandardMaterial({color:0x0a0600,roughness:0.05});
+for(const s of [-1,1]){
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.15,18,14),eyeMat);
+  eye.position.set(s*0.34,0.14,0.52); head.add(eye);
+  const pup = new THREE.Mesh(new THREE.SphereGeometry(0.09,12,10),pupilMat); // 竖直椭圆瞳
+  pup.scale.set(0.42,1.3,0.6); pup.position.set(s*0.40,0.15,0.62); head.add(pup);
+  const nos = new THREE.Mesh(new THREE.SphereGeometry(0.028,8,6),pupilMat);
+  nos.position.set(s*0.08,-0.02,1.28); head.add(nos);
+}
+
+// 舌头（信子）——分叉
+const tongue = new THREE.Group(); head.add(tongue);
+const tMat = new THREE.MeshStandardMaterial({color:0xd7263d,roughness:0.4,emissive:0x400008,emissiveIntensity:0.3});
+const tongueBase = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.06,0.9,8),tMat);
+tongueBase.rotation.x=Math.PI/2; tongueBase.position.z=0.45; tongue.add(tongueBase);
+const forks=[];
+for(const s of [-1,1]){
+  const f=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.045,0.5,6),tMat);
+  f.position.set(s*0.12,0,0.9+0.22); f.rotation.x=Math.PI/2; f.rotation.z=s*0.35;
+  tongue.add(f); forks.push(f);
+}
+tongue.position.z=1.35; tongue.scale.set(1,1,0.01); // 收起
+let tongueFlick=0;
+
+// ---------- 骨骼视图 ----------
+const skelGroup = new THREE.Group(); skelGroup.visible=false; scene.add(skelGroup);
+const boneMat = new THREE.MeshStandardMaterial({color:0xe8e4d8,roughness:0.6});
+const ribMat  = new THREE.MeshStandardMaterial({color:0xd8d2c2,roughness:0.6});
+const vertebrae=[], ribsL=[], ribsR=[];
+const VSTEP=3; // 每隔几个脊柱点放一节脊椎
+for(let i=0;i<N;i+=VSTEP){
+  const v=new THREE.Mesh(new THREE.SphereGeometry(0.12,10,8),boneMat);
+  skelGroup.add(v); vertebrae.push({i,mesh:v});
+  const t=i/N;
+  if(t>0.1 && t<0.68){ // 有肋骨的区段
+    for(const side of [ribsL,ribsR]){
+      const rib=new THREE.Mesh(new THREE.TorusGeometry(0.5,0.03,6,16,Math.PI*0.9),ribMat);
+      skelGroup.add(rib); side.push({i,mesh:rib,sign:side===ribsL?-1:1});
+    }
+  }
+}
+const skullBone=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,12),boneMat);
+skullBone.scale.set(0.6,0.5,1); skelGroup.add(skullBone);
+
+// ---------- 内脏视图 ----------
+const organGroup = new THREE.Group(); organGroup.visible=false; scene.add(organGroup);
+// 器官定义：沿体长归一化位置区间 + 颜色 + 名称。蛇的器官高度前后拉长、左右错位。
+// r = 占体腔半径的比例；side = 横向偏置(比例)；ny = 纵向偏置(比例)
+const organDefs=[
+  {name:'心脏',   a:0.18,b:0.23,r:0.62,col:0xc0392b,side:0.10,ny:0.05},
+  {name:'肺(长)', a:0.22,b:0.50,r:0.55,col:0xe08a9a,side:-0.12,ny:0.30},
+  {name:'肝脏',   a:0.28,b:0.46,r:0.55,col:0x7a3b2e,side:0.10,ny:-0.15},
+  {name:'胃',     a:0.44,b:0.60,r:0.72,col:0xb5651d,side:0.05,ny:-0.10},
+  {name:'胰/脾',  a:0.58,b:0.63,r:0.40,col:0x9b59b6,side:-0.20,ny:0.0},
+  {name:'小肠',   a:0.62,b:0.82,r:0.55,col:0xd9a441,side:0.0,ny:-0.10},
+  {name:'肾脏',   a:0.80,b:0.88,r:0.40,col:0x6b4423,side:0.15,ny:0.10},
+  {name:'泄殖腔', a:0.90,b:0.94,r:0.45,col:0x8a6d3b,side:0.0,ny:-0.05},
+];
+const organs=[];
+for(const d of organDefs){
+  const mat=new THREE.MeshStandardMaterial({color:d.col,roughness:0.5,
+    transparent:true,opacity:0.9,emissive:d.col,emissiveIntensity:0.12});
+  const m=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),mat);
+  organGroup.add(m); organs.push({def:d,mesh:m});
+}
+// 消化中的食物团（内脏视图里可见）
+const foodMat=new THREE.MeshStandardMaterial({color:0x5a4030,roughness:0.7,transparent:true,opacity:0.95});
+const foodBolus=new THREE.Mesh(new THREE.SphereGeometry(0.55,16,12),foodMat);
+foodBolus.visible=false; organGroup.add(foodBolus);
+
+// ---------- 猎物（老鼠） ----------
+const prey=new THREE.Group();
+const preyBody=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,12),
+  new THREE.MeshStandardMaterial({color:0x8a8a8a,roughness:0.8}));
+preyBody.scale.set(0.7,0.6,1.1); preyBody.castShadow=true; prey.add(preyBody);
+for(const s of [-1,1]){ // 耳朵
+  const ear=new THREE.Mesh(new THREE.SphereGeometry(0.2,10,8),
+    new THREE.MeshStandardMaterial({color:0xd6a0a8,roughness:0.8}));
+  ear.scale.set(0.5,0.7,0.2); ear.position.set(s*0.22,0.35,-0.3); prey.add(ear);
+}
+const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.06,1.1,6),
+  new THREE.MeshStandardMaterial({color:0xd6a0a8,roughness:0.8}));
+tail.position.set(0,0,0.9); tail.rotation.x=Math.PI/2.3; prey.add(tail);
+prey.position.set(6,0.4,6); prey.visible=false; scene.add(prey);
+
+// 信息素粒子（吐信子采样）
+const scentGeo=new THREE.BufferGeometry();
+const SCENT=60; const scentPos=new Float32Array(SCENT*3);
+scentGeo.setAttribute('position',new THREE.BufferAttribute(scentPos,3));
+const scent=new THREE.Points(scentGeo,new THREE.PointsMaterial({color:0x8fe3ff,size:0.14,transparent:true,opacity:0.7}));
+scent.visible=false; scene.add(scent);
+const scentData=Array.from({length:SCENT},()=>({p:new THREE.Vector3(),life:0}));
+
+// ---------- 状态机 ----------
+let gait='serpentine';
+let view='skin';
+let speed=1, amp=0.7, freq=2.6;
+let hunt={active:false, phase:'', timer:0, target:new THREE.Vector3()};
+
+// ---------- 帧计算（平行传输标架） ----------
+const tan=Array.from({length:N},()=>new THREE.Vector3());
+const nor=Array.from({length:N},()=>new THREE.Vector3());
+const bin=Array.from({length:N},()=>new THREE.Vector3());
+const up=new THREE.Vector3(0,1,0);
+
+function computeFrames(){
+  for(let i=0;i<N;i++){
+    if(i<N-1) tan[i].subVectors(spine[i+1],spine[i]);
+    else tan[i].subVectors(spine[i],spine[i-1]);
+    tan[i].normalize();
+  }
+  // 初始法线
+  nor[0].copy(up).sub(tan[0].clone().multiplyScalar(up.dot(tan[0]))).normalize();
+  if(nor[0].lengthSq()<1e-4) nor[0].set(1,0,0);
+  bin[0].crossVectors(tan[0],nor[0]).normalize();
+  for(let i=1;i<N;i++){ // 平行传输，避免扭转翻转
+    const v=new THREE.Vector3().crossVectors(tan[i-1],tan[i]);
+    const c=Math.min(1,Math.max(-1,tan[i-1].dot(tan[i])));
+    if(v.lengthSq()<1e-8){ nor[i].copy(nor[i-1]); }
+    else{ const ang=Math.acos(c); nor[i].copy(nor[i-1]).applyAxisAngle(v.normalize(),ang); }
+    // 正交化
+    nor[i].sub(tan[i].clone().multiplyScalar(tan[i].dot(nor[i]))).normalize();
+    bin[i].crossVectors(tan[i],nor[i]).normalize();
+  }
+}
+
+function updateBody(){
+  computeFrames();
+  const tmp=new THREE.Vector3();
+  for(let i=0;i<N;i++){
+    const t=i/(N-1);
+    const r=radiusAt(t);
+    const rBelly=r*0.86; // 腹部略扁
+    for(let j=0;j<=RADIAL;j++){
+      const a=j/RADIAL*Math.PI*2;
+      const ca=Math.cos(a), sa=Math.sin(a);
+      const scaleY = (sa<0? rBelly : r); // 下侧腹鳞略扁
+      tmp.copy(spine[i])
+        .addScaledVector(nor[i], ca*r)
+        .addScaledVector(bin[i], sa*scaleY);
+      const k=(i*(RADIAL+1)+j)*3;
+      posArr[k]=tmp.x; posArr[k+1]=tmp.y; posArr[k+2]=tmp.z;
+    }
+  }
+  bodyGeo.attributes.position.needsUpdate=true;
+  bodyGeo.computeVertexNormals();      // 平滑着色，消除锥面接缝
+  bodyGeo.computeBoundingSphere();
+
+  // 头部对齐脊柱前端
+  head.position.copy(spine[0]);
+  const fwd=tmp.copy(spine[0]).sub(spine[3]).normalize();
+  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),fwd);
+  head.quaternion.copy(q);
+}
+
+// 骨骼/内脏跟随脊柱
+function updateSkeleton(){
+  for(const v of vertebrae){ v.mesh.position.copy(spine[v.i]); }
+  for(const side of [ribsL,ribsR]) for(const r of side){
+    const i=r.i, t=i/N;
+    r.mesh.position.copy(spine[i]);
+    const m=new THREE.Matrix4().makeBasis(bin[i],nor[i],tan[i]);
+    r.mesh.quaternion.setFromRotationMatrix(m);
+    // 让肋骨环绕在身体半径内侧并向下弯
+    const rad=baseRadius(t)*thickness;
+    r.mesh.scale.setScalar(rad/0.5*0.9);
+    r.mesh.rotateZ(r.sign*Math.PI/2 - Math.PI/2);
+  }
+  skullBone.position.copy(spine[0]);
+  skullBone.quaternion.copy(head.quaternion);
+}
+function updateOrgans(){
+  const tmp=new THREE.Vector3();
+  for(const o of organs){
+    const mid=(o.def.a+o.def.b)/2;
+    const i=Math.min(N-1,Math.round(mid*(N-1)));
+    const bodyR=baseRadius(mid)*thickness;         // 该处体腔半径
+    const len=(o.def.b-o.def.a)*BODY_LEN;
+    tmp.copy(spine[i])
+      .addScaledVector(bin[i], o.def.side*bodyR)
+      .addScaledVector(nor[i], o.def.ny*bodyR);
+    o.mesh.position.copy(tmp);
+    const m=new THREE.Matrix4().makeBasis(bin[i],nor[i],tan[i]);
+    o.mesh.quaternion.setFromRotationMatrix(m);
+    const rad=Math.min(o.def.r*bodyR, bodyR*0.82);  // 保证不穿出体表
+    o.mesh.scale.set(rad, rad, Math.min(len*0.42, bodyR*2.6));
+  }
+  if(bolus.active && bolus.amp>0.06){
+    const i=Math.min(N-1,Math.round(bolus.t*(N-1)));
+    foodBolus.visible=true; foodBolus.position.copy(spine[i]);
+    foodBolus.scale.setScalar(bolus.amp*thickness*1.1);
+  } else foodBolus.visible=false;
+}
+
+// ---------- 运动学：驱动头部，身体跟随（follow-the-leader） ----------
+function advance(dt){
+  if(gait==='idle'){ return; }
+  const v = speed*5.5*dt;
+  phase += dt*speed*3;
+
+  // 头部朝向的横向摆动 → 产生沿身体传播的 S 波
+  let turn=0, lift=0, latStep=0;
+  if(gait==='serpentine'){
+    turn = Math.sin(phase*freq*0.6)*amp*0.5;
+    headAngle += turn*dt*4;
+  } else if(gait==='sidewind'){
+    // 侧进：身体分段抬起+侧向平移，整体斜向前进
+    turn = Math.sin(phase*freq*0.5)*amp*1.3;
+    headAngle += turn*dt*5;
+    latStep = Math.cos(phase*freq*0.5)*amp*0.9;
+  } else if(gait==='rectilinear'){
+    // 直行：几乎不摆头，靠腹鳞“履带式”推进（视觉上直线蠕动）
+    headAngle += Math.sin(phase*0.3)*0.02;
+  }
+
+  const dir=new THREE.Vector3(Math.sin(headAngle),0,Math.cos(headAngle));
+  headPos.addScaledVector(dir, v);
+  if(latStep) headPos.addScaledVector(new THREE.Vector3(Math.cos(headAngle),0,-Math.sin(headAngle)), latStep*v);
+  headPos.y = thickness + (gait==='sidewind'? 0.15*Math.abs(Math.sin(phase*freq)) :0);
+
+  // 软边界：太远则平滑转回中心
+  const distC=Math.hypot(headPos.x,headPos.z);
+  if(distC>22){ const toC=Math.atan2(-headPos.x,-headPos.z); headAngle+=THREE.MathUtils.clamp(angleDelta(headAngle,toC),-1,1)*dt*2; }
+
+  // 记录轨迹
+  const last=trail[0];
+  if(last.distanceTo(headPos)>0.04){ trail.unshift(headPos.clone()); if(trail.length>1200) trail.pop(); }
+
+  // 身体沿轨迹按固定弧长采样
+  resampleSpineFromTrail();
+
+  // 直行/直线蠕动叠加一个沿体轴的粗细波（履带感）
+}
+
+function resampleSpineFromTrail(){
+  spine[0].copy(headPos);
+  let ti=0, acc=0;
+  let cur=headPos.clone();
+  for(let i=1;i<N;i++){
+    let need=SEG_LEN;
+    while(need>0 && ti<trail.length-1){
+      const seg=trail[ti].distanceTo(cur);
+      if(seg>=need){
+        cur.lerp(trail[ti], need/seg);
+        need=0;
+      }else{
+        need-=seg; cur.copy(trail[ti]); ti++;
+      }
+    }
+    spine[i].copy(cur);
+    spine[i].y = thickness*0.98; // 贴地
+  }
+  // 侧进的抬升
+  if(gait==='sidewind'){
+    for(let i=0;i<N;i++){ spine[i].y = thickness*0.98 + 0.28*Math.max(0,Math.sin(i*0.12 - phase*freq)); }
+  }
+}
+
+function angleDelta(a,b){ let d=b-a; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; return d; }
+
+// ---------- 吐信子 ----------
+function flickTongue(dt){
+  if(tongueFlick>0){
+    tongueFlick-=dt;
+    const p=1-Math.max(0,tongueFlick)/1.2; // 0..1..0
+    const ext=Math.sin(Math.min(1,p*1.6)*Math.PI); // 伸出程度
+    tongue.scale.z = 0.01 + ext*1.0;
+    jaw.rotation.x = ext*0.12;
+    // 分叉抖动
+    const wob=Math.sin(phase*40)*0.25*ext;
+    forks[0].rotation.z=-0.35-wob; forks[1].rotation.z=0.35+wob;
+    // 信息素采样粒子
+    if(ext>0.3 && Math.random()<0.5) spawnScent();
+  } else {
+    tongue.scale.z += (0.01-tongue.scale.z)*Math.min(1,dt*8);
+    jaw.rotation.x += (0-jaw.rotation.x)*Math.min(1,dt*8);
+  }
+  updateScent(dt);
+}
+function spawnScent(){
+  const s=scentData.find(d=>d.life<=0); if(!s) return;
+  const tip=new THREE.Vector3(0,0,2.0).applyQuaternion(head.quaternion).add(head.position);
+  s.p.copy(tip).add(new THREE.Vector3((Math.random()-0.5)*2,(Math.random())*1.2,(Math.random()-0.5)*2));
+  s.life=1.2;
+}
+function updateScent(dt){
+  scent.visible = scentData.some(d=>d.life>0);
+  for(let i=0;i<SCENT;i++){
+    const d=scentData[i];
+    if(d.life>0){ d.life-=dt; d.p.y+=dt*0.4;
+      scentPos[i*3]=d.p.x; scentPos[i*3+1]=d.p.y; scentPos[i*3+2]=d.p.z;
+    } else { scentPos[i*3+1]=-999; }
+  }
+  scentGeo.attributes.position.needsUpdate=true;
+}
+
+// ---------- 捕猎 / 吞咽 / 消化 ----------
+function startHunt(){
+  if(hunt.active) return;
+  prey.visible=true;
+  // 猎物放在蛇头前方一段距离
+  const fwd=new THREE.Vector3(0,0,1).applyQuaternion(head.quaternion);
+  prey.position.copy(head.position).addScaledVector(fwd,7).setY(0.4);
+  prey.position.x+=3;
+  hunt={active:true,phase:'stalk',timer:0,target:prey.position.clone()};
+  setGait('idle',true);
+  setInfo('hunt');
+  document.getElementById('hudState').textContent='潜行接近';
+}
+let strikeReach=0;   // 前段脊柱向猎物延伸量
+function updateHunt(dt){
+  if(!hunt.active) return;
+  hunt.timer+=dt;
+  const st=document.getElementById('hudState');
+  const toPrey=new THREE.Vector3().subVectors(prey.position,head.position);
+  const dist=toPrey.length();
+
+  if(hunt.phase==='stalk'){
+    // 头部缓缓转向猎物 + 频繁吐信定位
+    const targetAngle=Math.atan2(toPrey.x,toPrey.z);
+    headAngle+=angleDelta(headAngle,targetAngle)*Math.min(1,dt*1.5);
+    if(tongueFlick<=0 && Math.random()<0.03) tongueFlick=1.0;
+    if(hunt.timer>2.2){ hunt.phase='coil'; hunt.timer=0; st.textContent='蓄势(S形)'; }
+  }
+  else if(hunt.phase==='coil'){
+    // 颈部拉成 S 形蓄力
+    strikeReach=Math.max(strikeReach-dt*2,-1.2*Math.sin(hunt.timer*3));
+    if(hunt.timer>0.7){ hunt.phase='strike'; hunt.timer=0; st.textContent='闪电突袭!'; tongueFlick=0; }
+  }
+  else if(hunt.phase==='strike'){
+    strikeReach += (dist-0.6 - strikeReach)*Math.min(1,dt*14); // 猛地前扑
+    jaw.rotation.x = Math.min(0.9, jaw.rotation.x+dt*6);       // 张大口
+    if(dist<1.4 || hunt.timer>0.5){ hunt.phase='grab'; hunt.timer=0; st.textContent='咬住猎物'; }
+  }
+  else if(hunt.phase==='grab'){
+    // 猎物被叼到口中
+    const mouth=new THREE.Vector3(0,0,1.6).applyQuaternion(head.quaternion).add(head.position);
+    prey.position.lerp(mouth,Math.min(1,dt*8));
+    prey.scale.lerp(new THREE.Vector3(0.8,0.8,0.8),Math.min(1,dt*4));
+    if(hunt.timer>0.8){ hunt.phase='swallow'; hunt.timer=0; st.textContent='吞咽(下颚脱位)'; bolus={active:true,t:0.02,amp:0,width:0.05}; }
+  }
+  else if(hunt.phase==='swallow'){
+    // 交替张合下颚，把猎物“走”进体内；食团出现并增大
+    jaw.rotation.x = 0.5+0.35*Math.sin(hunt.timer*10);
+    const mouth=new THREE.Vector3(0,0,1.4).applyQuaternion(head.quaternion).add(head.position);
+    prey.position.lerp(mouth,Math.min(1,dt*3));
+    prey.scale.multiplyScalar(1-dt*0.9);
+    bolus.amp=Math.min(0.85,bolus.amp+dt*0.8);
+    bolus.width=0.06;
+    strikeReach += (0-strikeReach)*Math.min(1,dt*4);
+    if(hunt.timer>1.6){ hunt.phase='digest'; hunt.timer=0; prey.visible=false; prey.scale.set(1,1,1);
+      st.textContent='蠕动消化'; jaw.rotation.x=0; }
+  }
+  else if(hunt.phase==='digest'){
+    // 食团沿体内向尾部缓慢移动并逐渐缩小（被消化）
+    bolus.t += dt*0.05;
+    bolus.amp *= (1-dt*0.12);
+    if(bolus.t>0.85 || bolus.amp<0.06){ bolus.active=false; bolus.amp=0;
+      hunt.active=false; setGait('serpentine',true); st.textContent='游动中'; setInfo('gait'); }
+  }
+}
+
+// ---------- UI ----------
+function setGait(g,silent){
+  gait=g;
+  document.querySelectorAll('#gait button').forEach(b=>b.classList.toggle('on',b.dataset.gait===g));
+  const names={serpentine:'蜿蜒',sidewind:'侧进',rectilinear:'直行',idle:'静止'};
+  document.getElementById('hudGait').textContent=names[g];
+  if(!silent){ document.getElementById('hudState').textContent = g==='idle'?'静止':'游动中'; setInfo('gait'); }
+}
+function setView(v){
+  view=v;
+  document.querySelectorAll('#view button').forEach(b=>b.classList.toggle('on',b.dataset.view===v));
+  const names={skin:'外观鳞片',skeleton:'骨骼',organs:'内脏'};
+  document.getElementById('hudView').textContent=names[v];
+  skelGroup.visible = v==='skeleton';
+  organGroup.visible= v==='organs';
+  // 皮肤透明度（透视内部时关闭深度写入，避免遮挡内脏/骨骼）
+  if(v==='skin'){
+    skinMat.transparent=false; skinMat.opacity=1; skinMat.depthWrite=true;
+  } else {
+    skinMat.transparent=true; skinMat.depthWrite=false;
+    skinMat.opacity = v==='skeleton'?0.18:0.24;
+  }
+  skinMat.needsUpdate=true;
+  bodyMesh.renderOrder = v==='skin'?0:2;   // 透明皮肤最后画
+  setInfo('view');
+}
+
+document.getElementById('gait').onclick=e=>{ if(e.target.dataset.gait) setGait(e.target.dataset.gait); };
+document.getElementById('view').onclick=e=>{ if(e.target.dataset.view) setView(e.target.dataset.view); };
+document.getElementById('btnTongue').onclick=()=>{ tongueFlick=1.2; setInfo('tongue'); };
+document.getElementById('btnHunt').onclick=startHunt;
+const sp=document.getElementById('speed'),am=document.getElementById('amp'),fq=document.getElementById('freq');
+sp.oninput=()=>{speed=+sp.value;document.getElementById('speedV').textContent=speed.toFixed(1);};
+am.oninput=()=>{amp=+am.value;document.getElementById('ampV').textContent=amp.toFixed(1);};
+fq.oninput=()=>{freq=+fq.value;document.getElementById('freqV').textContent=freq.toFixed(1);};
+
+// 信息文案
+const INFO={
+  gait:{
+    serpentine:['蜿蜒运动 · Lateral Undulation','蛇最常见的运动方式。全身呈 S 形波，肌肉自头向尾依次收缩，波沿身体向后传播；波的外侧推压地面凸起或阻力点，反作用力将蛇整体向前推进。注意鳞片与地面的摩擦各向异性——向后打滑小、侧向打滑大，这是前进的关键。'],
+    sidewind:['侧进运动 · Sidewinding','沙漠响尾蛇在松软流沙上的绝技。身体只有两三处接触地面，其余部分腾空并向侧前方"抛出"，形成一串平行的 J 形足迹，减少与灼热沙面的接触。'],
+    rectilinear:['直行蠕动 · Rectilinear','大型蛇（蟒、蚺）缓慢潜行时使用。腹鳞像履带一样成组前伸、抓地、后拉，身体几乎笔直向前，隐蔽而不易被猎物察觉。'],
+    idle:['静止 · Rest','蛇盘踞待机。此时仍在用舌头持续采样空气中的气味分子，监视周围环境。']
+  },
+  view:{
+    skin:['鳞片与体表 · Scales','体表覆盖角质鳞片：背鳞成排交叠防止水分流失，腹部为一整排宽大的腹鳞（ventral scales）用于抓地推进。透明的"眼罩鳞"覆盖眼睛，蜕皮时整层更换。'],
+    skeleton:['骨骼结构 · Skeleton','脊柱由 200–400 节以上的椎骨组成，每节都能小幅活动，累积出极大柔韧性。除少数残迹外没有四肢；几乎每节椎骨都连着一对可活动的肋骨，既保护内脏又参与呼吸和运动。头骨骨块之间以韧带松散相连，为吞咽大猎物做准备。'],
+    organs:['内脏排列 · Viscera','为适应细长体型，器官前后拉长、左右错位：心脏靠前，右肺极度延长而左肺退化，肝脏细长；胃、肠依次排列，最后汇入泄殖腔。成对器官（如肾）也前后错开而非左右并列。']
+  },
+  tongue:['吐信子 · Tongue Flicking & 犁鼻器','分叉的舌头本身不"尝味"，而是把空气或地面的气味分子采集回来，送入口腔顶部的一对犁鼻器（Jacobson\'s organ，即锄鼻器）。左右两叉分别采样，使蛇能像"立体声"一样判断气味来自哪一侧，从而追踪猎物或配偶的踪迹。'],
+  hunt:['捕猎与吞咽消化 · Predation & Digestion','完整链条：①吐信子定位猎物 → ②颈部收成 S 形蓄力 → ③闪电般突袭咬住 → ④下颚左右两半可独立前后"步进"，配合方骨与松散的头骨把猎物整个吞下 → ⑤食团在体内形成鼓包，被强酸性的胃逐步分解。进食一顿后，蛇的代谢和消化器官会显著增大以处理食物。']
+};
+function setInfo(kind){
+  let title,text,tag='生物学';
+  if(kind==='gait'){ [title,text]=INFO.gait[gait]; tag='运动'; }
+  else if(kind==='view'){ [title,text]=INFO.view[view]; tag='解剖'; }
+  else if(kind==='tongue'){ [title,text]=INFO.tongue; tag='感官'; }
+  else if(kind==='hunt'){ [title,text]=INFO.hunt; tag='行为'; }
+  document.getElementById('infoTag').textContent=tag;
+  document.getElementById('infoTitle').textContent=title;
+  document.getElementById('infoText').textContent=text;
+}
+setInfo('gait');
+
+// ---------- 主循环 ----------
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  advance(dt);
+  updateHunt(dt);
+  // 突袭时把前段脊柱向前延伸
+  if(Math.abs(strikeReach)>0.001){
+    const fwd=new THREE.Vector3(Math.sin(headAngle),0,Math.cos(headAngle));
+    for(let i=0;i<40;i++){ const w=1-i/40; spine[i].addScaledVector(fwd,strikeReach*w*0.06); }
+    headPos.copy(spine[0]);
+  }
+  updateBody();
+  flickTongue(dt);
+  if(view==='skeleton') updateSkeleton();
+  if(view==='organs') updateOrgans();
+  controls.update();
+  renderer.render(scene,camera);
+}
+
+// ---------- 纹理生成 ----------
+// 背腹渐变色（u=0.25 背部, u=0.75 腹部）
+function dorsalT(uu){ return 0.5+0.5*Math.cos((uu-0.25)*Math.PI*2); } // 1=背 0=腹
+function lerpCol(a,b,t){ return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; }
+function makeSnakeSkin(){
+  const W=512,H=512, c=document.createElement('canvas'); c.width=W;c.height=H;
+  const g=c.getContext('2d');
+  const belly=[214,208,158], side=[104,132,58], dorsal=[46,74,26];
+  // 底色：沿周向背腹渐变
+  const img=g.createImageData(W,H);
+  for(let x=0;x<W;x++){
+    const t=dorsalT(x/W);
+    const col = t>0.5 ? lerpCol(side,dorsal,(t-0.5)*2) : lerpCol(belly,side,t*2);
+    for(let y=0;y<H;y++){ const k=(y*W+x)*4; img.data[k]=col[0];img.data[k+1]=col[1];img.data[k+2]=col[2];img.data[k+3]=255; }
+  }
+  g.putImageData(img,0,0);
+  // 背部马鞍斑（沿身体方向可平铺，2块/贴图）
+  const dx=0.25*W;
+  for(const cy of [0.25*H,0.75*H]){
+    for(const off of [-H,0,H]){
+      g.save(); g.translate(dx,cy+off); g.fillStyle='rgba(24,36,16,0.9)';
+      g.beginPath(); g.ellipse(0,0,W*0.16,H*0.12,0,0,Math.PI*2); g.fill();
+      g.strokeStyle='rgba(226,216,150,0.55)'; g.lineWidth=4; g.stroke();
+      g.restore();
+    }
+  }
+  // 侧腹小点斑
+  g.fillStyle='rgba(30,40,18,0.4)';
+  for(let i=0;i<40;i++){
+    const x=Math.random()*W, y=Math.random()*H;
+    if(dorsalT(x/W)<0.55){ g.beginPath(); g.arc(x,y,3+Math.random()*4,0,Math.PI*2); g.fill(); }
+  }
+  // 覆瓦状鳞片高光/描边
+  drawScales(g,W,H,(gg)=>{ gg.strokeStyle='rgba(0,0,0,0.20)'; gg.lineWidth=1;});
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.anisotropy=8;
+  tex.colorSpace=THREE.SRGBColorSpace;
+  return tex;
+}
+// 鳞片凹凸贴图（灰度：亮=凸起, 暗=鳞缝）
+function makeSnakeBump(){
+  const W=512,H=512,c=document.createElement('canvas'); c.width=W;c.height=H;
+  const g=c.getContext('2d');
+  g.fillStyle='#7a7a7a'; g.fillRect(0,0,W,H);
+  drawScales(g,W,H,null,true);
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.anisotropy=8;
+  return tex;
+}
+// 绘制覆瓦鳞片（可平铺）
+function drawScales(g,W,H,styler,bump){
+  const cols=26, rows=30;
+  const cw=W/cols, rh=H/rows;
+  for(let r=-1;r<=rows;r++){
+    const yy=r*rh; const xoff=(r&1)?cw/2:0;
+    for(let cc=-1;cc<=cols;cc++){
+      const x=cc*cw+xoff, y=yy;
+      g.save(); g.translate(x+cw/2,y+rh/2);
+      // 覆瓦鳞：向下的圆弧鳞片
+      const w=cw*0.62, h=rh*0.9;
+      if(bump){
+        const grd=g.createLinearGradient(0,-h/2,0,h/2);
+        grd.addColorStop(0,'#eaeaea'); grd.addColorStop(0.75,'#8a8a8a'); grd.addColorStop(1,'#3a3a3a');
+        g.fillStyle=grd;
+      } else {
+        const grd=g.createLinearGradient(0,-h/2,0,h/2);
+        grd.addColorStop(0,'rgba(255,255,255,0.14)'); grd.addColorStop(0.6,'rgba(255,255,255,0)');
+        grd.addColorStop(1,'rgba(0,0,0,0.22)');
+        g.fillStyle=grd;
+      }
+      g.beginPath();
+      g.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);
+      g.fill();
+      if(styler){ styler(g); g.stroke(); }
+      g.restore();
+    }
+  }
+}
+function makeGroundTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=512;
+  const g=c.getContext('2d');
+  g.fillStyle='#2a2e26'; g.fillRect(0,0,512,512);
+  for(let i=0;i<9000;i++){
+    const x=Math.random()*512,y=Math.random()*512;
+    const v=30+Math.random()*40;
+    g.fillStyle=`rgba(${v+20},${v+18},${v},0.5)`;
+    g.fillRect(x,y,2,2);
+  }
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(8,8);
+  return tex;
+}
+
+// ---------- 启动 ----------
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+document.getElementById('loader').style.display='none';
+animate();
+</script>
